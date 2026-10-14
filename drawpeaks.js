@@ -1,7 +1,7 @@
 // drawpeaks.js
 // inlet 0: indices list (integers 0..bins-1)
 // inlet 1: magnitudes list (floats)
-// outlet 0: messages to send to a jit.lcd object (e.g., "clear", "setcolor r g b a", "paintoval x1 y1 x2 y2")
+// outlet 0: messages to send to a jit.lcd object (e.g., "clear", "frgb r g b", "paintoval x1 y1 x2 y2")
 // Config messages: "bins N", "size W H", "scale S", "clear"
 
 inlets = 2;
@@ -33,7 +33,7 @@ function draw(idxs) {
     // clear first
     outlet(0, "clear");
     // set marker color (red)
-    outlet(0, "setcolor", 255, 60, 60, 255);
+    outlet(0, "frgb", 255, 60, 60);
 
     for (var k = 0; k < idxs.length; k++) {
         var idx = Number(idxs[k]);

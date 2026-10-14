@@ -17,6 +17,8 @@ test('bins remains callable and changes coordinates; invalid settings retain val
   ctx.bins(3); ctx.size(101, 51); ctx.scale(0);
   ctx.bins('bad'); ctx.size(-1, 0); ctx.scale(NaN);
   ctx.inlet = 1; ctx.msg_float(0.5); ctx.inlet = 0; ctx.msg_int(2);
+  assert.deepEqual(events[1], [0, 'frgb', 255, 60, 60]);
+  assert.ok(events.every(e => ['clear', 'frgb', 'paintoval', 'bang'].includes(e[1])));
   assert.deepEqual(events[2], [0, 'paintoval', 97, -3, 103, 3]);
   assert.equal(typeof ctx.bins, 'function');
 });
