@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>手势声音控制</title>
+<style>
+body{font-family:system-ui;max-width:760px;margin:36px auto;padding:0 20px;background:#17212b;color:#fff}
+button{font:inherit;padding:12px 20px;margin:6px;border-radius:8px;cursor:pointer}
+video{width:100%;max-height:480px;transform:scaleX(-1);border-radius:12px;background:#000}
+#status{min-height:48px;line-height:1.5}
+</style>
+<h1>用手控制声音</h1>
+<p>先在 Max 开启扬声器。手向上移动升高音调；拇指与食指张开增大音量，捏合静音。手离开画面自动静音。</p>
+<button id="start">开启摄像头</button><button id="stop" disabled>停止并静音</button>
+<p id="status">摄像头画面仅在浏览器本地处理。首次启动需要联网下载识别模型。</p>
+<video id="video" autoplay muted playsinline></video>
+<script type="module">
+const video = document.querySelector('video'), status = document.querySelector('#status');
+const start = document.querySelector('#start'), stop = document.querySelector('#stop');
+let detector, stream, running = false, generation = 0, lastTime = -1;
+const frame = data => fetch('/frame', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data) });
+async function silence() { try { await frame({present:false}); } catch (_) {} }
+async function shutdown() {
+  running = false; generation++;
+  if (stream) stream.getTracks().forEach(track => track.stop());
+  stream = null; video.srcObject = null; lastTime = -1;
+  stop.disabled = true; start.disabled = false;
+  await silence(); status.textContent = '已停止，声音已静音。';
+}
+stop.onclick = shutdown;
+document.addEventListener('visibilitychange', () => { if (document.hidden) shutdown(); });
+window.addEventListener('pagehide', () => { navigator.sendBeacon('/frame', JSON.stringify({present:false})); });
+start.onclick = async () => {
+  start.disabled = true; stop.disabled = false;
+  const session = ++generation;
+  try {
+    status.textContent = '正在请求摄像头权限和加载模型…';
+    // Request permission directly from the user click before waiting for downloads.
+    stream = await navigator.mediaDevices.getUserMedia({video:{width:640,height:480},audio:false});
+    if (session !== generation) { stream.getTracks().forEach(track=>track.stop()); stream=null; return; }
+    video.srcObject = stream; await video.play();
+    if (!detector) {
+      const { FilesetResolver, HandLandmarker } = await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.21/+esm');
+      const files = await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.21/wasm');
+      detector = await HandLandmarker.createFromOptions(files, {
+        baseOptions:{modelAssetPath:'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task'},
+        runningMode:'VIDEO', numHands:1
+      });
+    }
+    if (session !== generation) return;
+    running = true;
+    async function tick() {
+      if (!running || session !== generation) return;
+      try {
+        if (video.currentTime !== lastTime && video.readyState >= 2) {
+          lastTime = video.currentTime;
+          const result = detector.detectForVideo(video, performance.now());
+          const hand = result.landmarks[0];
+          if (hand) {
+            const aspect = video.videoWidth / video.videoHeight;
+            const distance = (a,b) => Math.hypot((a.x-b.x)*aspect,a.y-b.y);
+            const palm = Math.max(0.001,distance(hand[0],hand[9]));
+            const pinch = Math.max(0,Math.min(1,(distance(hand[4],hand[8])/palm-0.15)/0.9));
+            const response = await frame({present:true,y:hand[9].y,pinch});
+            if (!response.ok) throw new Error('Max 控制连接失败');
+            status.textContent = `已识别手部 · 音高 ${Math.round(110*8**(1-hand[9].y))} Hz · 音量 ${Math.round(pinch*100)}%`;
+          } else { await silence(); status.textContent = '未识别到手：已静音。请将手掌放入画面。'; }
+        }
+        if (running && session === generation) setTimeout(tick,40);
+      } catch (error) { await shutdown(); status.textContent = `已停止：${error.message}`; }
+    }
+    tick();
+  } catch (error) {
+    await shutdown(); status.textContent = `无法启动：${error.message}。请检查摄像头权限和网络，关闭其他占用摄像头的软件。`;
+  }
+};
+</script>
+</html>
