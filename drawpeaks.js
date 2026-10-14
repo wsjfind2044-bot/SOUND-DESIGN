@@ -7,11 +7,15 @@
 inlets = 2;
 outlets = 1;
 
-var bins = 256;
+var binCount = 512;
 var width = 512;
 var height = 256;
 var scaleVal = 10.0;
 var lastMags = [];
+
+// Max dispatches one-element numeric lists as int/float messages.
+function msg_int(v) { list(v); }
+function msg_float(v) { list(v); }
 
 function list() {
     var args = arrayfromargs(arguments);
@@ -32,12 +36,14 @@ function draw(idxs) {
     outlet(0, "setcolor", 255, 60, 60, 255);
 
     for (var k = 0; k < idxs.length; k++) {
-        var idx = idxs[k];
+        var idx = Number(idxs[k]);
+        if (!isFinite(idx) || idx < 0 || idx >= binCount) continue;
         var mag = (k < lastMags.length) ? Math.abs(lastMags[k]) : 0;
+        if (!isFinite(mag)) mag = 0;
         // map index -> x (time/frequency axis left->right)
-        var x = Math.round((idx / Math.max(1, bins - 1)) * (width - 1));
+        var x = Math.round((idx / Math.max(1, binCount - 1)) * (width - 1));
         // map index -> y: low freq at bottom -> higher index up; invert for lcd coords
-        var y = Math.round((1 - (idx / Math.max(1, bins - 1))) * (height - 1));
+        var y = Math.round((1 - (idx / Math.max(1, binCount - 1))) * (height - 1));
         var r = Math.max(3, Math.round(mag * scaleVal * 10)); // radius from mag
         outlet(0, "paintoval", x - r, y - r, x + r, y + r);
     }
@@ -46,17 +52,21 @@ function draw(idxs) {
 }
 
 function bins(v) {
-    bins = parseInt(v);
-    post("drawpeaks: bins set to " + bins + "\n");
+    var n = parseInt(v, 10);
+    if (isFinite(n) && n > 1) binCount = n;
+    post("drawpeaks: bins set to " + binCount + "\n");
 }
 
 function size(w,h) {
-    width = parseInt(w); height = parseInt(h);
+    var nextWidth = parseInt(w, 10), nextHeight = parseInt(h, 10);
+    if (isFinite(nextWidth) && nextWidth > 0) width = nextWidth;
+    if (isFinite(nextHeight) && nextHeight > 0) height = nextHeight;
     post("drawpeaks: size set to " + width + "x" + height + "\n");
 }
 
 function scale(s) {
-    scaleVal = parseFloat(s);
+    var nextScale = parseFloat(s);
+    if (isFinite(nextScale) && nextScale >= 0) scaleVal = nextScale;
     post("drawpeaks: scale set to " + scaleVal + "\n");
 }
 
